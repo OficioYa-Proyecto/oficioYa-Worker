@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -74,7 +75,14 @@ public class AvailabilitySlotService {
         log.info("Availability slot {} deleted", slotId);
     }
 
+    private boolean isHalfHourBoundary(LocalTime time) {
+        return time.toNanoOfDay() % java.time.Duration.ofMinutes(30).toNanos() == 0;
+    }
+
     private void normalizeAndValidate(AvailabilitySlot slot) {
+        if (!isHalfHourBoundary(slot.getStartTime()) || !isHalfHourBoundary(slot.getEndTime())) {
+            throw new IllegalArgumentException("Start and end times must be on the hour or half hour");
+        }
         if (!slot.getStartTime().isBefore(slot.getEndTime())) {
             throw new IllegalArgumentException("The start time must be before the end time");
         }
