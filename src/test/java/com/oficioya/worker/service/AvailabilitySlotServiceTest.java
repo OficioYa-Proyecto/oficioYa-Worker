@@ -61,6 +61,32 @@ class AvailabilitySlotServiceTest {
                 LocalTime.of(from, 0), LocalTime.of(to, 0));
     }
 
+    @Test
+    void shouldAcceptHalfHourAndRejectOtherMinutesWhenCreatingFixedSlot() {
+        when(workerRepository.findById(WORKER_ID)).thenReturn(Optional.of(worker));
+        when(slotRepository.findByWorkerId(WORKER_ID)).thenReturn(List.of());
+        saveReturnsArgument();
+
+        AvailabilitySlotModel model = fixed(MARTES, 8, 12);
+        model.setStartTime(LocalTime.of(8, 15));
+        assertThrows(IllegalArgumentException.class, () -> slotService.create(WORKER_ID, model));
+        verify(slotRepository, never()).save(any());
+
+        model.setStartTime(LocalTime.of(8, 30));
+        assertEquals(LocalTime.of(8, 30), slotService.create(WORKER_ID, model).getStartTime());
+    }
+
+    @Test
+    void shouldRejectSecondsWhenUpdatingRecurringSlot() {
+        when(workerRepository.findById(WORKER_ID)).thenReturn(Optional.of(worker));
+        when(slotRepository.findById(SLOT_ID)).thenReturn(Optional.of(existingMondays(SLOT_ID)));
+        AvailabilitySlotModel model = new AvailabilitySlotModel(null, RecurrenceType.RECURRING,
+                LUNES, LUNES.plusMonths(1), DayOfWeek.MONDAY, LocalTime.of(8, 0), LocalTime.of(12, 30, 1));
+
+        assertThrows(IllegalArgumentException.class, () -> slotService.update(WORKER_ID, SLOT_ID, model));
+        verify(slotRepository, never()).save(any());
+    }
+
     private AvailabilitySlot existingMondays(UUID id) {
         AvailabilitySlot slot = new AvailabilitySlot();
         slot.setId(id);
