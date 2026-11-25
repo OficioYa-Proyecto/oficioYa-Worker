@@ -2,6 +2,7 @@ package com.oficioya.worker.repository;
 
 import com.oficioya.worker.entity.Worker;
 import com.oficioya.worker.model.WorkerStatus;
+import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -9,6 +10,7 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -23,6 +25,26 @@ class WorkerRepositoryTest {
 
     @Autowired
     private WorkerRepository workerRepository;
+
+    @Autowired
+    private EntityManager entityManager;
+
+    @Test
+    void shouldFilterWorkersAndFetchAllTheirZones() {
+        Worker matching = newWorker(USER_ID, true);
+        matching.getZoneIds().addAll(List.of(5L, 8L));
+        Worker saved = workerRepository.saveAndFlush(matching);
+        workerRepository.save(newWorker(OTHER_USER_ID, false));
+        entityManager.flush();
+        entityManager.clear();
+
+        List<Worker> result = workerRepository.search(WorkerStatus.ACTIVE, null, 5L, null, true, true, false);
+
+        assertEquals(List.of(saved.getId()), result.stream().map(Worker::getId).toList());
+        assertEquals(Set.of(5L, 8L), result.getFirst().getZoneIds());
+        assertEquals(2, workerRepository.search(WorkerStatus.ACTIVE, null, null, null, null, false, false).size());
+        assertTrue(workerRepository.search(WorkerStatus.ACTIVE, UUID.randomUUID(), null, null, null, false, true).isEmpty());
+    }
 
     private Worker newWorker(UUID userId, boolean availableNow) {
         Worker worker = new Worker();

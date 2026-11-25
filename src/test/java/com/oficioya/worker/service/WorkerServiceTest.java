@@ -234,29 +234,27 @@ class WorkerServiceTest {
         Worker barato = worker(WORKER_ID, USER_ID, WorkerStatus.ACTIVE);
         barato.setAvailableNow(true);
         barato.getZoneIds().add(5L);
-        Worker caro = worker(OTHER_WORKER_ID, OTHER_USER_ID, WorkerStatus.ACTIVE);
-        caro.setAvailableNow(true);
-        caro.getZoneIds().add(5L);
-        Worker otraZona = worker(UUID.randomUUID(), UNKNOWN_USER_ID, WorkerStatus.ACTIVE);
-        otraZona.setAvailableNow(true);
-        otraZona.getZoneIds().add(8L);
-        when(workerRepository.findByStatus(WorkerStatus.ACTIVE)).thenReturn(List.of(barato, caro, otraZona));
-        when(workerTradeRepository.findByWorkerId(WORKER_ID)).thenReturn(List.of(workerTrade(barato, plomeria, "40000", true)));
-        when(workerTradeRepository.findByWorkerId(OTHER_WORKER_ID)).thenReturn(List.of(workerTrade(caro, plomeria, "90000", true)));
+        BigDecimal maxRate = new BigDecimal("50000");
+        when(workerRepository.search(WorkerStatus.ACTIVE, TRADE_ID, 5L, maxRate, true, true, true)).thenReturn(List.of(barato));
+        when(workerTradeRepository.findByWorkerIdIn(List.of(WORKER_ID)))
+                .thenReturn(List.of(workerTrade(barato, plomeria, "40000", true)));
 
         List<WorkerModel> result = workerService.search(TRADE_ID, 5L, new BigDecimal("50000"), true);
 
         assertEquals(1, result.size());
         assertEquals(WORKER_ID, result.get(0).getId());
+        assertEquals(TRADE_ID, result.get(0).getPrimaryTrade().getTrade().getId());
+        verify(slotRepository).findByWorkerIdIn(List.of(WORKER_ID));
+        verify(photoRepository).findByWorkerIdIn(List.of(WORKER_ID));
     }
 
     @Test
     @DisplayName("La búsqueda solo incluye trabajadores activos")
     void shouldSearchOnlyActiveWorkers() {
-        when(workerRepository.findByStatus(WorkerStatus.ACTIVE)).thenReturn(List.of());
+        when(workerRepository.search(WorkerStatus.ACTIVE, null, null, null, null, false, false)).thenReturn(List.of());
 
         assertTrue(workerService.search(null, null, null, null).isEmpty());
-        verify(workerRepository).findByStatus(WorkerStatus.ACTIVE);
+        verifyNoInteractions(workerTradeRepository, slotRepository, photoRepository);
         verify(workerRepository, never()).findAll();
     }
 
