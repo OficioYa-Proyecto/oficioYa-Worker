@@ -216,6 +216,29 @@ public class WorkerService {
         log.info("Zone {} removed from worker {}", zoneId, workerId);
     }
 
+    public Set<Long> findLocalities(UUID workerId) {
+        return new HashSet<>(getWorkerOrThrow(workerId).getLocalityIds());
+    }
+
+    @Transactional
+    public void addLocality(UUID workerId, Long localityId) {
+        Worker worker = getActiveWorkerOrThrow(workerId);
+        worker.getLocalityIds().add(localityId);
+        workerRepository.save(worker);
+        log.info("Locality {} added to worker {}", localityId, workerId);
+    }
+
+    @Transactional
+    public void removeLocality(UUID workerId, Long localityId) {
+        Worker worker = getActiveWorkerOrThrow(workerId);
+        if (!worker.getLocalityIds().remove(localityId)) {
+            log.warn("Worker {} does not cover locality {}", workerId, localityId);
+            throw new ResourceNotFoundException("The worker does not cover locality: " + localityId);
+        }
+        workerRepository.save(worker);
+        log.info("Locality {} removed from worker {}", localityId, workerId);
+    }
+
     private Worker getActiveWorkerOrThrow(UUID id) {
         Worker worker = getWorkerOrThrow(id);
         if (worker.getStatus() == WorkerStatus.PAUSED) {

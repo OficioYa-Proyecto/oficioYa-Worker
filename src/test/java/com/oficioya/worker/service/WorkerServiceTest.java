@@ -360,6 +360,48 @@ class WorkerServiceTest {
         assertEquals(Set.of(6L), workerService.findZones(WORKER_ID));
     }
 
+        @Test
+    @DisplayName("Agrega una localidad de cobertura")
+    void shouldAddLocality() {
+        Worker worker = worker(WORKER_ID, USER_ID, WorkerStatus.ACTIVE);
+        when(workerRepository.findById(WORKER_ID)).thenReturn(Optional.of(worker));
+
+        workerService.addLocality(WORKER_ID, 3L);
+
+        assertTrue(worker.getLocalityIds().contains(3L));
+        verify(workerRepository).save(worker);
+    }
+
+    @Test
+    @DisplayName("Un trabajador pausado no puede cambiar sus localidades")
+    void shouldNotAddLocalityToPausedWorker() {
+        when(workerRepository.findById(WORKER_ID)).thenReturn(Optional.of(worker(WORKER_ID, USER_ID, WorkerStatus.PAUSED)));
+
+        assertThrows(BusinessRuleException.class, () -> workerService.addLocality(WORKER_ID, 3L));
+        verify(workerRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Quitar una localidad que el trabajador no cubre lanza ResourceNotFoundException")
+    void shouldFailRemovingUncoveredLocality() {
+        when(workerRepository.findById(WORKER_ID)).thenReturn(Optional.of(worker(WORKER_ID, USER_ID, WorkerStatus.ACTIVE)));
+
+        assertThrows(ResourceNotFoundException.class, () -> workerService.removeLocality(WORKER_ID, 3L));
+        verify(workerRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Quita una localidad cubierta y lista las restantes")
+    void shouldRemoveLocality() {
+        Worker worker = worker(WORKER_ID, USER_ID, WorkerStatus.ACTIVE);
+        worker.getLocalityIds().addAll(Set.of(3L, 4L));
+        when(workerRepository.findById(WORKER_ID)).thenReturn(Optional.of(worker));
+
+        workerService.removeLocality(WORKER_ID, 3L);
+
+        assertEquals(Set.of(4L), workerService.findLocalities(WORKER_ID));
+    }
+
     @Test
     @DisplayName("Devuelve el perfil del trabajador por su userId")
     void shouldFindByUserId() {

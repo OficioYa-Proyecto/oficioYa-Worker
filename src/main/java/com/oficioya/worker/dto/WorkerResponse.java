@@ -10,6 +10,7 @@ import java.util.UUID;
 // y solo los ve la administración del sistema.
 public record WorkerResponse(UUID id, UUID userId, WorkerStatus status, boolean availableNow,
                              Set<Long> zoneIds,
+                             Set<Long> localityIds,
                              WorkerTradeResponse primaryTrade,
                              List<WorkerTradeResponse> secondaryTrades,
                              List<AvailabilitySlotResponse> slots,
