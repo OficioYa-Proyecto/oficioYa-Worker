@@ -12,6 +12,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.*;
 import java.math.BigDecimal;
 
+import static java.util.stream.Collectors.groupingBy;
+
 @Service
 public class WorkerService {
 
@@ -47,29 +49,35 @@ public class WorkerService {
         this.photoMapper = photoMapper;
     }
 
+    @Transactional(readOnly = true)
     public List<WorkerModel> search(UUID tradeId, Long zoneId, BigDecimal maxRate, Boolean availableNow) {
         log.info("Worker search: tradeId={}, zoneId={}, maxRate={}, availableNow={}",
                 tradeId, zoneId, maxRate, availableNow);
         if (maxRate != null && maxRate.signum() < 0) {
             throw new IllegalArgumentException("The maximum rate cannot be negative");
         }
-        List<WorkerModel> result = workerRepository.findByStatus(WorkerStatus.ACTIVE).stream()
-                .filter(w -> availableNow == null || w.isAvailableNow() == availableNow)
-                .filter(w -> zoneId == null || w.getZoneIds().contains(zoneId))
-                .filter(w -> matchesTrade(w, tradeId, maxRate))
-                .map(this::buildModel)
+        List<Worker> workers = workerRepository.search(WorkerStatus.ACTIVE, tradeId, zoneId, maxRate, availableNow,
+                zoneId != null, tradeId != null || maxRate != null);
+        if (workers.isEmpty()) {
+            return List.of();
+        }
+
+        List<UUID> workerIds = workers.stream().map(Worker::getId).toList();
+        var tradesByWorker = workerTradeRepository.findByWorkerIdIn(workerIds).stream()
+                .collect(groupingBy(trade -> trade.getWorker().getId()));
+        var slotsByWorker = slotRepository.findByWorkerIdIn(workerIds).stream()
+                .collect(groupingBy(slot -> slot.getWorker().getId()));
+        var photosByWorker = photoRepository.findByWorkerIdIn(workerIds).stream()
+                .collect(groupingBy(photo -> photo.getWorker().getId()));
+
+        List<WorkerModel> result = workers.stream()
+                .map(worker -> buildModel(worker,
+                        tradesByWorker.getOrDefault(worker.getId(), List.of()),
+                        slotsByWorker.getOrDefault(worker.getId(), List.of()),
+                        photosByWorker.getOrDefault(worker.getId(), List.of())))
                 .toList();
         log.info("Worker search returned {} workers", result.size());
         return result;
-    }
-
-    private boolean matchesTrade(Worker worker, UUID tradeId, BigDecimal maxRate) {
-        if (tradeId == null && maxRate == null) {
-            return true;
-        }
-        return workerTradeRepository.findByWorkerId(worker.getId()).stream()
-                .anyMatch(wt -> (tradeId == null || wt.getTrade().getId().equals(tradeId))
-                        && (maxRate == null || wt.getApproxRate().compareTo(maxRate) <= 0));
     }
 
     public WorkerModel findById(UUID id) {
@@ -149,9 +157,16 @@ public class WorkerService {
 
     // Arma el modelo completo: el mapper copia los campos planos y aquí se cargan las listas
     private WorkerModel buildModel(Worker worker) {
+        UUID workerId = worker.getId();
+        return buildModel(worker, workerTradeRepository.findByWorkerId(workerId),
+                slotRepository.findByWorkerId(workerId), photoRepository.findByWorkerId(workerId));
+    }
+
+    private WorkerModel buildModel(Worker worker, List<WorkerTrade> trades,
+                                   List<AvailabilitySlot> slots, List<WorkPhoto> photos) {
         WorkerModel model = workerMapper.toModel(worker);
 
-        for (WorkerTrade workerTrade : workerTradeRepository.findByWorkerId(worker.getId())) {
+        for (WorkerTrade workerTrade : trades) {
             WorkerTradeModel tradeModel = workerTradeMapper.toModel(workerTrade);
             if (workerTrade.isPrimary()) {
                 model.setPrimaryTrade(tradeModel);
@@ -159,8 +174,8 @@ public class WorkerService {
                 model.addSecondaryTrade(tradeModel);
             }
         }
-        model.setSlots(slotMapper.toModelList(slotRepository.findByWorkerId(worker.getId())));
-        model.setPhotos(photoMapper.toModelList(photoRepository.findByWorkerId(worker.getId())));
+        model.setSlots(slotMapper.toModelList(slots));
+        model.setPhotos(photoMapper.toModelList(photos));
         return model;
     }
 
