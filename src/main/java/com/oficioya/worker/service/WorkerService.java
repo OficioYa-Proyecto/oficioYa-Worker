@@ -179,6 +179,7 @@ public class WorkerService {
     private WorkerModel buildModel(Worker worker, List<WorkerTrade> trades,
                                    List<AvailabilitySlot> slots, List<WorkPhoto> photos) {
         WorkerModel model = workerMapper.toModel(worker);
+        model.setZoneIds(coveredZones(model));
 
         for (WorkerTrade workerTrade : trades) {
             WorkerTradeModel tradeModel = workerTradeMapper.toModel(workerTrade);
@@ -191,6 +192,16 @@ public class WorkerService {
         model.setSlots(slotMapper.toModelList(slots));
         model.setPhotos(photoMapper.toModelList(photos));
         return model;
+    }
+
+    // zoneIds de la respuesta = barrios guardados + barrios de sus localidades.
+    // Así los demás dominios ven la cobertura completa sin cambiar nada de su lado.
+    private Set<Long> coveredZones(WorkerModel model) {
+        Set<Long> covered = new HashSet<>(model.getZoneIds());
+        for (Long localityId : model.getLocalityIds()) {
+            covered.addAll(locationCatalog.zonesOfLocality(localityId));
+        }
+        return covered;
     }
 
     private Worker getWorkerOrThrow(UUID id) {

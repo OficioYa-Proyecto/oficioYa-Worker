@@ -454,4 +454,32 @@ class WorkerServiceTest {
 
         assertTrue(workerService.search(null, null, 3L, null, null).isEmpty());
     }
+
+    @Test
+    @DisplayName("zoneIds del perfil incluye los barrios de sus localidades")
+    void shouldIncludeLocalityZonesInProfile() {
+        Worker worker = worker(WORKER_ID, USER_ID, WorkerStatus.ACTIVE);
+        worker.getZoneIds().add(9L);
+        worker.getLocalityIds().add(3L);
+        when(workerRepository.findById(WORKER_ID)).thenReturn(Optional.of(worker));
+        when(locationCatalog.zonesOfLocality(3L)).thenReturn(Set.of(5L, 6L));
+
+        WorkerModel result = workerService.findById(WORKER_ID);
+
+        assertEquals(Set.of(5L, 6L, 9L), result.getZoneIds());
+        assertEquals(Set.of(3L), result.getLocalityIds());
+        assertEquals(Set.of(9L), worker.getZoneIds());   // la entidad no se modifica
+    }
+
+    @Test
+    @DisplayName("Si el catálogo no responde, el perfil devuelve solo los barrios guardados")
+    void shouldKeepSavedZonesWhenCatalogIsUnavailable() {
+        Worker worker = worker(WORKER_ID, USER_ID, WorkerStatus.ACTIVE);
+        worker.getZoneIds().add(9L);
+        worker.getLocalityIds().add(3L);
+        when(workerRepository.findById(WORKER_ID)).thenReturn(Optional.of(worker));
+        when(locationCatalog.zonesOfLocality(3L)).thenReturn(Set.of());
+
+        assertEquals(Set.of(9L), workerService.findById(WORKER_ID).getZoneIds());
+    }
 }
