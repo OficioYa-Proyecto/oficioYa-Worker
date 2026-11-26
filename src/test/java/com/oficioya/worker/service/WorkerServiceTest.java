@@ -33,9 +33,7 @@ class WorkerServiceTest {
 
     private static final UUID USER_ID = UUID.randomUUID();
     private static final UUID OTHER_USER_ID = UUID.randomUUID();
-    private static final UUID UNKNOWN_USER_ID = UUID.randomUUID();
     private static final UUID WORKER_ID = UUID.randomUUID();
-    private static final UUID OTHER_WORKER_ID = UUID.randomUUID();
     private static final UUID UNKNOWN_WORKER_ID = UUID.randomUUID();
     private static final UUID TRADE_ID = UUID.randomUUID();
     private static final UUID OTHER_TRADE_ID = UUID.randomUUID();
