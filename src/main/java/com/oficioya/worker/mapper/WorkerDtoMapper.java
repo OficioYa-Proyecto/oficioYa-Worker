@@ -21,7 +21,6 @@ public interface WorkerDtoMapper {
     @Mapping(target = "secondaryTrades", ignore = true)
     @Mapping(target = "slots", ignore = true)
     @Mapping(target = "photos", ignore = true)
-    @Mapping(target = "localityIds", ignore = true)
     WorkerModel toModel(WorkerCreateRequest request);
 
     WorkerResponse toResponse(WorkerModel model);

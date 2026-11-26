@@ -130,6 +130,7 @@ public class WorkerService {
         }
 
         locationCatalog.requireZones(model.getZoneIds());
+        model.getLocalityIds().forEach(locationCatalog::requireLocality);
         Worker worker = workerMapper.toEntity(model);
         worker.setId(null);
         worker.setStatus(WorkerStatus.ACTIVE);          // siempre nace activo

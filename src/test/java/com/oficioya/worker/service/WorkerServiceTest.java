@@ -482,4 +482,39 @@ class WorkerServiceTest {
 
         assertEquals(Set.of(9L), workerService.findById(WORKER_ID).getZoneIds());
     }
+
+    @Test
+    @DisplayName("Crea el perfil con localidades validadas y cubre sus barrios")
+    void shouldCreateWorkerWithLocalities() {
+        when(workerRepository.findByUserId(USER_ID)).thenReturn(Optional.empty());
+        when(tradeRepository.findById(TRADE_ID)).thenReturn(Optional.of(plomeria));
+        when(workerRepository.save(any(Worker.class))).thenAnswer(inv -> {
+            Worker saved = inv.getArgument(0);
+            saved.setId(WORKER_ID);
+            return saved;
+        });
+        when(locationCatalog.zonesOfLocality(3L)).thenReturn(Set.of(6L, 7L));
+
+        WorkerModel model = newProfile(USER_ID, TRADE_ID);
+        model.setLocalityIds(Set.of(3L));
+        WorkerModel result = workerService.create(model);
+
+        verify(locationCatalog).requireLocality(3L);
+        assertEquals(Set.of(3L), result.getLocalityIds());
+        assertEquals(Set.of(5L, 6L, 7L), result.getZoneIds());
+    }
+
+    @Test
+    @DisplayName("No crea el perfil si una localidad no existe")
+    void shouldNotCreateWorkerWithUnknownLocality() {
+        when(workerRepository.findByUserId(USER_ID)).thenReturn(Optional.empty());
+        when(tradeRepository.findById(TRADE_ID)).thenReturn(Optional.of(plomeria));
+        doThrow(new IllegalArgumentException("Unknown locality: 99")).when(locationCatalog).requireLocality(99L);
+
+        WorkerModel model = newProfile(USER_ID, TRADE_ID);
+        model.setLocalityIds(Set.of(99L));
+
+        assertThrows(IllegalArgumentException.class, () -> workerService.create(model));
+        verify(workerRepository, never()).save(any());
+    }
 }
