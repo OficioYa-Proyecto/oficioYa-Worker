@@ -55,10 +55,11 @@ public class WorkerController {
     @Operation(summary = "buscar trabajadores", description = "Devuelve todos los trabajadores registrados segun ciertos parametros")
     public ResponseEntity<List<WorkerResponse>> search(@RequestParam(required = false) UUID tradeId,
                                                        @RequestParam(required = false) Long zoneId,
+                                                       @RequestParam(required = false) Long localityId,
                                                        @RequestParam(required = false) BigDecimal maxRate,
                                                        @RequestParam(required = false) Boolean availableNow) {
         return ResponseEntity.ok(workerDtoMapper.toResponseList(
-                workerService.search(tradeId, zoneId, maxRate, availableNow)));
+                workerService.search(tradeId, zoneId, localityId, maxRate, availableNow)));
     }
 
     @GetMapping("/{id}")

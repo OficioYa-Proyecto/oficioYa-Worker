@@ -54,15 +54,23 @@ public class WorkerService {
         this.locationCatalog = locationCatalog;
     }
 
+    private static final Long NONE = -1L;   // marcador "sin valor" para la consulta
+
     @Transactional(readOnly = true)
-    public List<WorkerModel> search(UUID tradeId, Long zoneId, BigDecimal maxRate, Boolean availableNow) {
-        log.info("Worker search: tradeId={}, zoneId={}, maxRate={}, availableNow={}",
-                tradeId, zoneId, maxRate, availableNow);
+    public List<WorkerModel> search(UUID tradeId, Long zoneId, Long localityId,
+                                    BigDecimal maxRate, Boolean availableNow) {
+        log.info("Worker search: tradeId={}, zoneId={}, localityId={}, maxRate={}, availableNow={}",
+                tradeId, zoneId, localityId, maxRate, availableNow);
         if (maxRate != null && maxRate.signum() < 0) {
             throw new IllegalArgumentException("The maximum rate cannot be negative");
         }
-        List<Worker> workers = workerRepository.search(WorkerStatus.ACTIVE, tradeId, zoneId, maxRate, availableNow,
-                zoneId != null, tradeId != null || maxRate != null);
+        Long zoneLocalityId = zoneId == null ? NONE : locationCatalog.localityOfZone(zoneId).orElse(NONE);
+        Set<Long> localityZones = localityId == null ? Set.of() : locationCatalog.zonesOfLocality(localityId);
+        List<Worker> workers = workerRepository.search(WorkerStatus.ACTIVE, tradeId, zoneId, zoneLocalityId,
+                localityId == null ? NONE : localityId,
+                localityZones.isEmpty() ? Set.of(NONE) : localityZones,
+                maxRate, availableNow,
+                zoneId != null, localityId != null, tradeId != null || maxRate != null);
         if (workers.isEmpty()) {
             return List.of();
         }

@@ -237,11 +237,12 @@ class WorkerServiceTest {
         barato.setAvailableNow(true);
         barato.getZoneIds().add(5L);
         BigDecimal maxRate = new BigDecimal("50000");
-        when(workerRepository.search(WorkerStatus.ACTIVE, TRADE_ID, 5L, maxRate, true, true, true)).thenReturn(List.of(barato));
+        when(locationCatalog.localityOfZone(5L)).thenReturn(Optional.of(3L));
+        when(workerRepository.search(WorkerStatus.ACTIVE, TRADE_ID, 5L, 3L, -1L, Set.of(-1L), maxRate, true, true, false, true)).thenReturn(List.of(barato));
         when(workerTradeRepository.findByWorkerIdIn(List.of(WORKER_ID)))
                 .thenReturn(List.of(workerTrade(barato, plomeria, "40000", true)));
 
-        List<WorkerModel> result = workerService.search(TRADE_ID, 5L, new BigDecimal("50000"), true);
+        List<WorkerModel> result = workerService.search(TRADE_ID, 5L, null, new BigDecimal("50000"), true);
 
         assertEquals(1, result.size());
         assertEquals(WORKER_ID, result.get(0).getId());
@@ -253,9 +254,9 @@ class WorkerServiceTest {
     @Test
     @DisplayName("La búsqueda solo incluye trabajadores activos")
     void shouldSearchOnlyActiveWorkers() {
-        when(workerRepository.search(WorkerStatus.ACTIVE, null, null, null, null, false, false)).thenReturn(List.of());
+        when(workerRepository.search(WorkerStatus.ACTIVE, null, null, -1L, -1L, Set.of(-1L), null, null, false, false, false)).thenReturn(List.of());
 
-        assertTrue(workerService.search(null, null, null, null).isEmpty());
+        assertTrue(workerService.search(null, null, null, null, null).isEmpty());
         verifyNoInteractions(workerTradeRepository, slotRepository, photoRepository);
         verify(workerRepository, never()).findAll();
     }
@@ -264,7 +265,7 @@ class WorkerServiceTest {
     @DisplayName("La búsqueda rechaza una tarifa máxima negativa")
     void shouldRejectNegativeMaxRate() {
         assertThrows(IllegalArgumentException.class,
-                () -> workerService.search(null, null, new BigDecimal("-1"), null));
+                () -> workerService.search(null, null, null, new BigDecimal("-1"), null));
         verifyNoInteractions(workerRepository);
     }
 
@@ -442,5 +443,15 @@ class WorkerServiceTest {
         when(workerRepository.findByUserId(userId)).thenReturn(Optional.empty());
 
         assertThrows(ResourceNotFoundException.class, () -> workerService.findByUserId(userId));
+    }
+
+    @Test
+    @DisplayName("La búsqueda por localidad usa los barrios de esa localidad")
+    void shouldSearchByLocality() {
+        when(locationCatalog.zonesOfLocality(3L)).thenReturn(Set.of(5L, 6L));
+        when(workerRepository.search(WorkerStatus.ACTIVE, null, null, -1L, 3L, Set.of(5L, 6L), null, null, false, true, false))
+                .thenReturn(List.of());
+
+        assertTrue(workerService.search(null, null, 3L, null, null).isEmpty());
     }
 }
