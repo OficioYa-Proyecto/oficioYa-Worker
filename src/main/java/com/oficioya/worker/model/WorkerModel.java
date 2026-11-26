@@ -18,7 +18,8 @@ public class WorkerModel {
     private UUID userId;
     private WorkerStatus status;
     private boolean availableNow;
-    private Set<Long> zoneIds = new HashSet<>();    
+    private Set<Long> zoneIds = new HashSet<>();   
+    private Set<Long> localityIds = new HashSet<>(); 
     @NotNull
     @Valid
     private WorkerTradeModel primaryTrade;
@@ -28,6 +29,7 @@ public class WorkerModel {
 
     public WorkerModel() {
         this.zoneIds = new HashSet<>();
+        this.localityIds = new HashSet<>();
         this.slots = new ArrayList<>();
         this.photos = new ArrayList<>();
         this.secondaryTrades = new ArrayList<>();
@@ -78,6 +80,14 @@ public class WorkerModel {
 
     public void setZoneIds(Set<Long> zoneIds) {
         this.zoneIds = zoneIds;
+    }
+
+        public Set<Long> getLocalityIds() {
+        return localityIds;
+    }
+
+    public void setLocalityIds(Set<Long> localityIds) {
+        this.localityIds = localityIds;
     }
 
     public List<AvailabilitySlotModel> getSlots() {

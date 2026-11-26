@@ -38,12 +38,12 @@ class WorkerRepositoryTest {
         entityManager.flush();
         entityManager.clear();
 
-        List<Worker> result = workerRepository.search(WorkerStatus.ACTIVE, null, 5L, null, true, true, false);
+        List<Worker> result = workerRepository.search(WorkerStatus.ACTIVE, null, 5L, -1L, -1L, Set.of(-1L), null, true, true, false, false);
 
         assertEquals(List.of(saved.getId()), result.stream().map(Worker::getId).toList());
         assertEquals(Set.of(5L, 8L), result.getFirst().getZoneIds());
-        assertEquals(2, workerRepository.search(WorkerStatus.ACTIVE, null, null, null, null, false, false).size());
-        assertTrue(workerRepository.search(WorkerStatus.ACTIVE, UUID.randomUUID(), null, null, null, false, true).isEmpty());
+        assertEquals(2, workerRepository.search(WorkerStatus.ACTIVE, null, null, -1L, -1L, Set.of(-1L), null, null, false, false, false).size());
+        assertTrue(workerRepository.search(WorkerStatus.ACTIVE, UUID.randomUUID(), null, -1L, -1L, Set.of(-1L), null, null, false, false, true).isEmpty());
     }
 
     private Worker newWorker(UUID userId, boolean availableNow) {
@@ -103,5 +103,30 @@ class WorkerRepositoryTest {
         workerRepository.deleteById(saved.getId());
 
         assertTrue(workerRepository.findById(saved.getId()).isEmpty());
+    }
+
+    @Test
+    @DisplayName("La búsqueda cubre por localidad: barrio de la localidad y localidad con sus barrios")
+    void shouldSearchByLocalityCoverage() {
+        Worker loose = newWorker(USER_ID, false);
+        loose.getZoneIds().add(5L);
+        Worker byLocality = newWorker(OTHER_USER_ID, false);
+        byLocality.getLocalityIds().add(3L);
+        Worker other = newWorker(UNKNOWN_USER_ID, false);
+        other.getZoneIds().add(99L);
+        Set<UUID> expected = Set.of(workerRepository.saveAndFlush(loose).getId(),
+                workerRepository.saveAndFlush(byLocality).getId());
+        workerRepository.saveAndFlush(other);
+        entityManager.clear();
+
+        // barrio 5, que pertenece a la localidad 3
+        Set<UUID> byZone = workerRepository.search(WorkerStatus.ACTIVE, null, 5L, 3L, -1L, Set.of(-1L),
+                null, null, true, false, false).stream().map(Worker::getId).collect(java.util.stream.Collectors.toSet());
+        // localidad 3, con los barrios 5 y 6
+        Set<UUID> byLoc = workerRepository.search(WorkerStatus.ACTIVE, null, null, -1L, 3L, Set.of(5L, 6L),
+                null, null, false, true, false).stream().map(Worker::getId).collect(java.util.stream.Collectors.toSet());
+
+        assertEquals(expected, byZone);
+        assertEquals(expected, byLoc);
     }
 }

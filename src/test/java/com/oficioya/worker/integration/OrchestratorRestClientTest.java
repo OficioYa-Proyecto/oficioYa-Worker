@@ -39,48 +39,44 @@ class OrchestratorRestClientTest {
         RequestContextHolder.resetRequestAttributes();
     }
 
-        @Test
-    void existAll_returnsTrueWhenAllZonesAreFound() {
+    @Test
+    void findZones_returnsZonesWithLocality() {
         server.expect(method(HttpMethod.GET))
                 .andExpect(request -> assertThat(request.getURI().getPath()).isEqualTo("/api/zones"))
-                .andExpect(queryParam("ids", "1,2"))
                 .andExpect(headerDoesNotExist("Authorization"))
-                .andRespond(withSuccess("[{\"id\":1},{\"id\":2}]", MediaType.APPLICATION_JSON));
+                .andRespond(withSuccess("[{\"id\":1,\"name\":\"Cedritos\",\"locality\":\"Usaquén\",\"extra\":true}]",
+                        MediaType.APPLICATION_JSON));
 
-        assertThat(client.existAll(new LinkedHashSet<>(List.of(1L, 2L)))).isTrue();
+        assertThat(client.findZones()).containsExactly(new LocationCatalogClient.Zone(1L, "Cedritos", "Usaquén"));
         server.verify();
     }
 
     @Test
-    void existAll_returnsFalseWhenSomeZoneIsMissing() {
+    void findLocalities_returnsLocalities() {
         server.expect(method(HttpMethod.GET))
-                .andRespond(withSuccess("[{\"id\":1}]", MediaType.APPLICATION_JSON));
+                .andExpect(request -> assertThat(request.getURI().getPath()).isEqualTo("/api/localities"))
+                .andRespond(withSuccess("[{\"id\":1,\"name\":\"Usaquén\"},{\"id\":2,\"name\":\"Chapinero\"}]",
+                        MediaType.APPLICATION_JSON));
 
-        assertThat(client.existAll(new LinkedHashSet<>(List.of(1L, 2L)))).isFalse();
+        assertThat(client.findLocalities()).containsExactly(
+                new LocationCatalogClient.Locality(1L, "Usaquén"),
+                new LocationCatalogClient.Locality(2L, "Chapinero"));
     }
 
     @Test
-    void existAll_withEmptySet_doesNotCallTheServer() {
-        assertThat(client.existAll(Set.of())).isTrue();
-        server.verify();
-    }
-
-    @Test
-    void existAll_onServerError_throwsUnavailable() {
+    void findZones_onServerError_throwsUnavailable() {
         server.expect(method(HttpMethod.GET)).andRespond(withServerError());
 
-        assertThatThrownBy(() -> client.existAll(Set.of(1L)))
-                .isInstanceOf(ExternalServiceUnavailableException.class);
+        assertThatThrownBy(() -> client.findZones()).isInstanceOf(ExternalServiceUnavailableException.class);
     }
 
     @Test
-    void existAll_onTimeout_throwsUnavailable() {
+    void findLocalities_onTimeout_throwsUnavailable() {
         server.expect(method(HttpMethod.GET)).andRespond(request -> {
             throw new SocketTimeoutException("Read timed out");
         });
 
-        assertThatThrownBy(() -> client.existAll(Set.of(1L)))
-                .isInstanceOf(ExternalServiceUnavailableException.class);
+        assertThatThrownBy(() -> client.findLocalities()).isInstanceOf(ExternalServiceUnavailableException.class);
     }
 
         @Test

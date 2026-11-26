@@ -11,9 +11,11 @@ import java.util.Set;
 public record WorkerCreateRequest(
         boolean availableNow,
         Set<@NotNull @Positive Long> zoneIds,
+        Set<@NotNull @Positive Long> localityIds,
         @NotNull @Valid WorkerTradeRequest primaryTrade) {
 
     public WorkerCreateRequest {
         zoneIds = zoneIds == null ? new HashSet<>() : zoneIds;
+        localityIds = localityIds == null ? new HashSet<>() : localityIds;
     }
 }
