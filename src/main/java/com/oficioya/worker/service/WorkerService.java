@@ -5,9 +5,11 @@ import com.oficioya.worker.exception.*;
 import com.oficioya.worker.mapper.*;
 import com.oficioya.worker.model.*;
 import com.oficioya.worker.repository.*;
+import com.oficioya.worker.integration.LocationCatalog;
 import org.slf4j.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
 
 import java.util.*;
 import java.math.BigDecimal;
@@ -28,6 +30,7 @@ public class WorkerService {
     private final WorkerTradeMapper workerTradeMapper;
     private final AvailabilitySlotMapper slotMapper;
     private final WorkPhotoMapper photoMapper;
+    private final LocationCatalog locationCatalog;
 
     public WorkerService(WorkerRepository workerRepository,
                          WorkerTradeRepository workerTradeRepository,
@@ -37,7 +40,8 @@ public class WorkerService {
                          WorkerMapper workerMapper,
                          WorkerTradeMapper workerTradeMapper,
                          AvailabilitySlotMapper slotMapper,
-                         WorkPhotoMapper photoMapper) {
+                         WorkPhotoMapper photoMapper,
+                         LocationCatalog locationCatalog) {
         this.workerRepository = workerRepository;
         this.workerTradeRepository = workerTradeRepository;
         this.slotRepository = slotRepository;
@@ -47,6 +51,7 @@ public class WorkerService {
         this.workerTradeMapper = workerTradeMapper;
         this.slotMapper = slotMapper;
         this.photoMapper = photoMapper;
+        this.locationCatalog = locationCatalog;
     }
 
     @Transactional(readOnly = true)
@@ -116,6 +121,7 @@ public class WorkerService {
             throw new BusinessRuleException("Trade is not active: " + trade.getId());
         }
 
+        locationCatalog.requireZones(model.getZoneIds());
         Worker worker = workerMapper.toEntity(model);
         worker.setId(null);
         worker.setStatus(WorkerStatus.ACTIVE);          // siempre nace activo
@@ -200,6 +206,7 @@ public class WorkerService {
     @Transactional
     public void addZone(UUID workerId, Long zoneId) {
         Worker worker = getActiveWorkerOrThrow(workerId);
+        locationCatalog.requireZones(Set.of(zoneId));
         worker.getZoneIds().add(zoneId);
         workerRepository.save(worker);
         log.info("Zone {} added to worker {}", zoneId, workerId);
@@ -223,6 +230,7 @@ public class WorkerService {
     @Transactional
     public void addLocality(UUID workerId, Long localityId) {
         Worker worker = getActiveWorkerOrThrow(workerId);
+        locationCatalog.requireLocality(localityId);
         worker.getLocalityIds().add(localityId);
         workerRepository.save(worker);
         log.info("Locality {} added to worker {}", localityId, workerId);

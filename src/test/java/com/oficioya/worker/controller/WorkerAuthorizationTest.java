@@ -9,6 +9,7 @@ import com.oficioya.worker.repository.TradeRepository;
 import com.oficioya.worker.repository.WorkerRepository;
 import com.oficioya.worker.security.JwtService;
 import com.oficioya.worker.security.TestTokens;
+import com.oficioya.worker.integration.LocationCatalog;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -22,6 +23,7 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.util.UUID;
 
@@ -52,6 +54,9 @@ class WorkerAuthorizationTest {
 
     @Autowired
     MockMvc mockMvc;
+
+    @MockitoBean
+    LocationCatalog locationCatalog;
 
     @Autowired
     WorkerRepository workerRepository;

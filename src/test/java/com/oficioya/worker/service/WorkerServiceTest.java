@@ -6,6 +6,7 @@ import com.oficioya.worker.entity.Worker;
 import com.oficioya.worker.entity.WorkerTrade;
 import com.oficioya.worker.exception.BusinessRuleException;
 import com.oficioya.worker.exception.ResourceNotFoundException;
+import com.oficioya.worker.integration.LocationCatalog;
 import com.oficioya.worker.mapper.*;
 import com.oficioya.worker.model.*;
 import com.oficioya.worker.repository.*;
@@ -48,6 +49,7 @@ class WorkerServiceTest {
     @Mock private AvailabilitySlotRepository slotRepository;
     @Mock private WorkPhotoRepository photoRepository;
     @Mock private TradeRepository tradeRepository;
+    @Mock private LocationCatalog locationCatalog;
 
     private WorkerService workerService;
     private Trade plomeria;
@@ -57,7 +59,7 @@ class WorkerServiceTest {
         TradeMapper tradeMapper = new TradeMapperImpl(new TradeCategoryMapperImpl());
         workerService = new WorkerService(workerRepository, workerTradeRepository, slotRepository, photoRepository,
                 tradeRepository, new WorkerMapperImpl(), new WorkerTradeMapperImpl(tradeMapper),
-                new AvailabilitySlotMapperImpl(), new WorkPhotoMapperImpl());
+                new AvailabilitySlotMapperImpl(), new WorkPhotoMapperImpl(), locationCatalog);
 
         TradeCategory hogar = new TradeCategory();
         hogar.setId(CATEGORY_ID);
@@ -370,6 +372,7 @@ class WorkerServiceTest {
 
         assertTrue(worker.getLocalityIds().contains(3L));
         verify(workerRepository).save(worker);
+        verify(locationCatalog).requireLocality(3L);
     }
 
     @Test
@@ -400,6 +403,26 @@ class WorkerServiceTest {
         workerService.removeLocality(WORKER_ID, 3L);
 
         assertEquals(Set.of(4L), workerService.findLocalities(WORKER_ID));
+    }
+
+    @Test
+    @DisplayName("No agrega una localidad que Users no reconoce")
+    void shouldNotAddUnknownLocality() {
+        when(workerRepository.findById(WORKER_ID)).thenReturn(Optional.of(worker(WORKER_ID, USER_ID, WorkerStatus.ACTIVE)));
+        doThrow(new IllegalArgumentException("Unknown locality: 99")).when(locationCatalog).requireLocality(99L);
+
+        assertThrows(IllegalArgumentException.class, () -> workerService.addLocality(WORKER_ID, 99L));
+        verify(workerRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("No agrega una zona que Users no reconoce")
+    void shouldNotAddUnknownZone() {
+        when(workerRepository.findById(WORKER_ID)).thenReturn(Optional.of(worker(WORKER_ID, USER_ID, WorkerStatus.ACTIVE)));
+        doThrow(new IllegalArgumentException("Unknown zones: [99]")).when(locationCatalog).requireZones(Set.of(99L));
+
+        assertThrows(IllegalArgumentException.class, () -> workerService.addZone(WORKER_ID, 99L));
+        verify(workerRepository, never()).save(any());
     }
 
     @Test
