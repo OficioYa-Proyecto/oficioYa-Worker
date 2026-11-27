@@ -1,5 +1,7 @@
 package com.oficioya.worker.entity;
 
+import org.hibernate.annotations.Fetch;
+import org.hibernate.annotations.FetchMode;
 import com.oficioya.worker.model.WorkerStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -36,4 +38,11 @@ public class Worker {
     @CollectionTable(name = "worker_coverage", joinColumns = @JoinColumn(name = "worker_id"))
     @Column(name = "zone_id", nullable = false)
     private Set<Long> zoneIds = new HashSet<>();
+
+    // Ids de localidades (otro dominio): cubre todos los barrios de cada una. SUBSELECT evita una consulta por trabajador en las búsquedas
+    @ElementCollection(fetch = FetchType.EAGER)
+    @Fetch(FetchMode.SUBSELECT)
+    @CollectionTable(name = "worker_localities", joinColumns = @JoinColumn(name = "worker_id"))
+    @Column(name = "locality_id", nullable = false)
+    private Set<Long> localityIds = new HashSet<>();
 }

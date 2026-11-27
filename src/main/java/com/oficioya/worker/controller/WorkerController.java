@@ -5,6 +5,7 @@ import com.oficioya.worker.dto.WorkerCreateRequest;
 import com.oficioya.worker.dto.WorkerResponse;
 import com.oficioya.worker.dto.WorkerStatusRequest;
 import com.oficioya.worker.dto.WorkerZonesResponse;
+import com.oficioya.worker.dto.WorkerLocalitiesResponse;
 import com.oficioya.worker.mapper.WorkerDtoMapper;
 import com.oficioya.worker.model.WorkerModel;
 import com.oficioya.worker.service.WorkerService;
@@ -54,10 +55,11 @@ public class WorkerController {
     @Operation(summary = "buscar trabajadores", description = "Devuelve todos los trabajadores registrados segun ciertos parametros")
     public ResponseEntity<List<WorkerResponse>> search(@RequestParam(required = false) UUID tradeId,
                                                        @RequestParam(required = false) Long zoneId,
+                                                       @RequestParam(required = false) Long localityId,
                                                        @RequestParam(required = false) BigDecimal maxRate,
                                                        @RequestParam(required = false) Boolean availableNow) {
         return ResponseEntity.ok(workerDtoMapper.toResponseList(
-                workerService.search(tradeId, zoneId, maxRate, availableNow)));
+                workerService.search(tradeId, zoneId, localityId, maxRate, availableNow)));
     }
 
     @GetMapping("/{id}")
@@ -141,6 +143,28 @@ public class WorkerController {
     @Operation(summary = "Quitar zona del trabajador", description = "Elimina la asociación entre el trabajador y la zona")
     public ResponseEntity<Void> removeZone(@PathVariable UUID id, @PathVariable Long zoneId) {
         workerService.removeZone(id, zoneId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/{id}/localities")
+    @Operation(summary = "Listar localidades del trabajador", description = "Devuelve los IDs de las localidades que cubre (cada una incluye todos sus barrios)")
+    public ResponseEntity<WorkerLocalitiesResponse> findLocalities(@PathVariable UUID id) {
+        return ResponseEntity.ok(new WorkerLocalitiesResponse(id, workerService.findLocalities(id)));
+    }
+
+    @PreAuthorize("hasRole('TRABAJADOR') and @workerOwnership.isOwner(#id, authentication)")
+    @PutMapping("/{id}/localities/{localityId}")
+    @Operation(summary = "Agregar localidad al trabajador", description = "El trabajador pasa a cubrir todos los barrios de la localidad")
+    public ResponseEntity<Void> addLocality(@PathVariable UUID id, @PathVariable Long localityId) {
+        workerService.addLocality(id, localityId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PreAuthorize("hasRole('TRABAJADOR') and @workerOwnership.isOwner(#id, authentication)")
+    @DeleteMapping("/{id}/localities/{localityId}")
+    @Operation(summary = "Quitar localidad del trabajador", description = "Elimina la localidad de la cobertura del trabajador")
+    public ResponseEntity<Void> removeLocality(@PathVariable UUID id, @PathVariable Long localityId) {
+        workerService.removeLocality(id, localityId);
         return ResponseEntity.noContent().build();
     }
 }

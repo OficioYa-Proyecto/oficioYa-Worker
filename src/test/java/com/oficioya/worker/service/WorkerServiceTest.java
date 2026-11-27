@@ -6,6 +6,7 @@ import com.oficioya.worker.entity.Worker;
 import com.oficioya.worker.entity.WorkerTrade;
 import com.oficioya.worker.exception.BusinessRuleException;
 import com.oficioya.worker.exception.ResourceNotFoundException;
+import com.oficioya.worker.integration.LocationCatalog;
 import com.oficioya.worker.mapper.*;
 import com.oficioya.worker.model.*;
 import com.oficioya.worker.repository.*;
@@ -32,9 +33,7 @@ class WorkerServiceTest {
 
     private static final UUID USER_ID = UUID.randomUUID();
     private static final UUID OTHER_USER_ID = UUID.randomUUID();
-    private static final UUID UNKNOWN_USER_ID = UUID.randomUUID();
     private static final UUID WORKER_ID = UUID.randomUUID();
-    private static final UUID OTHER_WORKER_ID = UUID.randomUUID();
     private static final UUID UNKNOWN_WORKER_ID = UUID.randomUUID();
     private static final UUID TRADE_ID = UUID.randomUUID();
     private static final UUID OTHER_TRADE_ID = UUID.randomUUID();
@@ -48,6 +47,7 @@ class WorkerServiceTest {
     @Mock private AvailabilitySlotRepository slotRepository;
     @Mock private WorkPhotoRepository photoRepository;
     @Mock private TradeRepository tradeRepository;
+    @Mock private LocationCatalog locationCatalog;
 
     private WorkerService workerService;
     private Trade plomeria;
@@ -57,7 +57,7 @@ class WorkerServiceTest {
         TradeMapper tradeMapper = new TradeMapperImpl(new TradeCategoryMapperImpl());
         workerService = new WorkerService(workerRepository, workerTradeRepository, slotRepository, photoRepository,
                 tradeRepository, new WorkerMapperImpl(), new WorkerTradeMapperImpl(tradeMapper),
-                new AvailabilitySlotMapperImpl(), new WorkPhotoMapperImpl());
+                new AvailabilitySlotMapperImpl(), new WorkPhotoMapperImpl(), locationCatalog);
 
         TradeCategory hogar = new TradeCategory();
         hogar.setId(CATEGORY_ID);
@@ -235,11 +235,12 @@ class WorkerServiceTest {
         barato.setAvailableNow(true);
         barato.getZoneIds().add(5L);
         BigDecimal maxRate = new BigDecimal("50000");
-        when(workerRepository.search(WorkerStatus.ACTIVE, TRADE_ID, 5L, maxRate, true, true, true)).thenReturn(List.of(barato));
+        when(locationCatalog.localityOfZone(5L)).thenReturn(Optional.of(3L));
+        when(workerRepository.search(WorkerStatus.ACTIVE, TRADE_ID, 5L, 3L, -1L, Set.of(-1L), maxRate, true, true, false, true)).thenReturn(List.of(barato));
         when(workerTradeRepository.findByWorkerIdIn(List.of(WORKER_ID)))
                 .thenReturn(List.of(workerTrade(barato, plomeria, "40000", true)));
 
-        List<WorkerModel> result = workerService.search(TRADE_ID, 5L, new BigDecimal("50000"), true);
+        List<WorkerModel> result = workerService.search(TRADE_ID, 5L, null, new BigDecimal("50000"), true);
 
         assertEquals(1, result.size());
         assertEquals(WORKER_ID, result.get(0).getId());
@@ -251,9 +252,9 @@ class WorkerServiceTest {
     @Test
     @DisplayName("La búsqueda solo incluye trabajadores activos")
     void shouldSearchOnlyActiveWorkers() {
-        when(workerRepository.search(WorkerStatus.ACTIVE, null, null, null, null, false, false)).thenReturn(List.of());
+        when(workerRepository.search(WorkerStatus.ACTIVE, null, null, -1L, -1L, Set.of(-1L), null, null, false, false, false)).thenReturn(List.of());
 
-        assertTrue(workerService.search(null, null, null, null).isEmpty());
+        assertTrue(workerService.search(null, null, null, null, null).isEmpty());
         verifyNoInteractions(workerTradeRepository, slotRepository, photoRepository);
         verify(workerRepository, never()).findAll();
     }
@@ -262,7 +263,7 @@ class WorkerServiceTest {
     @DisplayName("La búsqueda rechaza una tarifa máxima negativa")
     void shouldRejectNegativeMaxRate() {
         assertThrows(IllegalArgumentException.class,
-                () -> workerService.search(null, null, new BigDecimal("-1"), null));
+                () -> workerService.search(null, null, null, new BigDecimal("-1"), null));
         verifyNoInteractions(workerRepository);
     }
 
@@ -360,6 +361,69 @@ class WorkerServiceTest {
         assertEquals(Set.of(6L), workerService.findZones(WORKER_ID));
     }
 
+        @Test
+    @DisplayName("Agrega una localidad de cobertura")
+    void shouldAddLocality() {
+        Worker worker = worker(WORKER_ID, USER_ID, WorkerStatus.ACTIVE);
+        when(workerRepository.findById(WORKER_ID)).thenReturn(Optional.of(worker));
+
+        workerService.addLocality(WORKER_ID, 3L);
+
+        assertTrue(worker.getLocalityIds().contains(3L));
+        verify(workerRepository).save(worker);
+        verify(locationCatalog).requireLocality(3L);
+    }
+
+    @Test
+    @DisplayName("Un trabajador pausado no puede cambiar sus localidades")
+    void shouldNotAddLocalityToPausedWorker() {
+        when(workerRepository.findById(WORKER_ID)).thenReturn(Optional.of(worker(WORKER_ID, USER_ID, WorkerStatus.PAUSED)));
+
+        assertThrows(BusinessRuleException.class, () -> workerService.addLocality(WORKER_ID, 3L));
+        verify(workerRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Quitar una localidad que el trabajador no cubre lanza ResourceNotFoundException")
+    void shouldFailRemovingUncoveredLocality() {
+        when(workerRepository.findById(WORKER_ID)).thenReturn(Optional.of(worker(WORKER_ID, USER_ID, WorkerStatus.ACTIVE)));
+
+        assertThrows(ResourceNotFoundException.class, () -> workerService.removeLocality(WORKER_ID, 3L));
+        verify(workerRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("Quita una localidad cubierta y lista las restantes")
+    void shouldRemoveLocality() {
+        Worker worker = worker(WORKER_ID, USER_ID, WorkerStatus.ACTIVE);
+        worker.getLocalityIds().addAll(Set.of(3L, 4L));
+        when(workerRepository.findById(WORKER_ID)).thenReturn(Optional.of(worker));
+
+        workerService.removeLocality(WORKER_ID, 3L);
+
+        assertEquals(Set.of(4L), workerService.findLocalities(WORKER_ID));
+    }
+
+    @Test
+    @DisplayName("No agrega una localidad que Users no reconoce")
+    void shouldNotAddUnknownLocality() {
+        when(workerRepository.findById(WORKER_ID)).thenReturn(Optional.of(worker(WORKER_ID, USER_ID, WorkerStatus.ACTIVE)));
+        doThrow(new IllegalArgumentException("Unknown locality: 99")).when(locationCatalog).requireLocality(99L);
+
+        assertThrows(IllegalArgumentException.class, () -> workerService.addLocality(WORKER_ID, 99L));
+        verify(workerRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("No agrega una zona que Users no reconoce")
+    void shouldNotAddUnknownZone() {
+        when(workerRepository.findById(WORKER_ID)).thenReturn(Optional.of(worker(WORKER_ID, USER_ID, WorkerStatus.ACTIVE)));
+        doThrow(new IllegalArgumentException("Unknown zones: [99]")).when(locationCatalog).requireZones(Set.of(99L));
+
+        assertThrows(IllegalArgumentException.class, () -> workerService.addZone(WORKER_ID, 99L));
+        verify(workerRepository, never()).save(any());
+    }
+
     @Test
     @DisplayName("Devuelve el perfil del trabajador por su userId")
     void shouldFindByUserId() {
@@ -377,5 +441,78 @@ class WorkerServiceTest {
         when(workerRepository.findByUserId(userId)).thenReturn(Optional.empty());
 
         assertThrows(ResourceNotFoundException.class, () -> workerService.findByUserId(userId));
+    }
+
+    @Test
+    @DisplayName("La búsqueda por localidad usa los barrios de esa localidad")
+    void shouldSearchByLocality() {
+        when(locationCatalog.zonesOfLocality(3L)).thenReturn(Set.of(5L, 6L));
+        when(workerRepository.search(WorkerStatus.ACTIVE, null, null, -1L, 3L, Set.of(5L, 6L), null, null, false, true, false))
+                .thenReturn(List.of());
+
+        assertTrue(workerService.search(null, null, 3L, null, null).isEmpty());
+    }
+
+    @Test
+    @DisplayName("zoneIds del perfil incluye los barrios de sus localidades")
+    void shouldIncludeLocalityZonesInProfile() {
+        Worker worker = worker(WORKER_ID, USER_ID, WorkerStatus.ACTIVE);
+        worker.getZoneIds().add(9L);
+        worker.getLocalityIds().add(3L);
+        when(workerRepository.findById(WORKER_ID)).thenReturn(Optional.of(worker));
+        when(locationCatalog.zonesOfLocality(3L)).thenReturn(Set.of(5L, 6L));
+
+        WorkerModel result = workerService.findById(WORKER_ID);
+
+        assertEquals(Set.of(5L, 6L, 9L), result.getZoneIds());
+        assertEquals(Set.of(3L), result.getLocalityIds());
+        assertEquals(Set.of(9L), worker.getZoneIds());   // la entidad no se modifica
+    }
+
+    @Test
+    @DisplayName("Si el catálogo no responde, el perfil devuelve solo los barrios guardados")
+    void shouldKeepSavedZonesWhenCatalogIsUnavailable() {
+        Worker worker = worker(WORKER_ID, USER_ID, WorkerStatus.ACTIVE);
+        worker.getZoneIds().add(9L);
+        worker.getLocalityIds().add(3L);
+        when(workerRepository.findById(WORKER_ID)).thenReturn(Optional.of(worker));
+        when(locationCatalog.zonesOfLocality(3L)).thenReturn(Set.of());
+
+        assertEquals(Set.of(9L), workerService.findById(WORKER_ID).getZoneIds());
+    }
+
+    @Test
+    @DisplayName("Crea el perfil con localidades validadas y cubre sus barrios")
+    void shouldCreateWorkerWithLocalities() {
+        when(workerRepository.findByUserId(USER_ID)).thenReturn(Optional.empty());
+        when(tradeRepository.findById(TRADE_ID)).thenReturn(Optional.of(plomeria));
+        when(workerRepository.save(any(Worker.class))).thenAnswer(inv -> {
+            Worker saved = inv.getArgument(0);
+            saved.setId(WORKER_ID);
+            return saved;
+        });
+        when(locationCatalog.zonesOfLocality(3L)).thenReturn(Set.of(6L, 7L));
+
+        WorkerModel model = newProfile(USER_ID, TRADE_ID);
+        model.setLocalityIds(Set.of(3L));
+        WorkerModel result = workerService.create(model);
+
+        verify(locationCatalog).requireLocality(3L);
+        assertEquals(Set.of(3L), result.getLocalityIds());
+        assertEquals(Set.of(5L, 6L, 7L), result.getZoneIds());
+    }
+
+    @Test
+    @DisplayName("No crea el perfil si una localidad no existe")
+    void shouldNotCreateWorkerWithUnknownLocality() {
+        when(workerRepository.findByUserId(USER_ID)).thenReturn(Optional.empty());
+        when(tradeRepository.findById(TRADE_ID)).thenReturn(Optional.of(plomeria));
+        doThrow(new IllegalArgumentException("Unknown locality: 99")).when(locationCatalog).requireLocality(99L);
+
+        WorkerModel model = newProfile(USER_ID, TRADE_ID);
+        model.setLocalityIds(Set.of(99L));
+
+        assertThrows(IllegalArgumentException.class, () -> workerService.create(model));
+        verify(workerRepository, never()).save(any());
     }
 }

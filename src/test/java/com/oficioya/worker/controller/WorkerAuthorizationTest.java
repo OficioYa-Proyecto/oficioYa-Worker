@@ -9,6 +9,7 @@ import com.oficioya.worker.repository.TradeRepository;
 import com.oficioya.worker.repository.WorkerRepository;
 import com.oficioya.worker.security.JwtService;
 import com.oficioya.worker.security.TestTokens;
+import com.oficioya.worker.integration.LocationCatalog;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -22,6 +23,7 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.util.UUID;
 
@@ -48,9 +50,13 @@ class WorkerAuthorizationTest {
     private static final UUID CONTRATANTE = UUID.fromString(CONTRATANTE_NAME);
     private static final UUID SERVICE_ID = UUID.fromString("5e2c1f0a-7b3d-4c9e-8a1f-2d6b9e4c7a10");
     private static final long ZONA = 5L;
+    private static final long LOCALIDAD = 3L;
 
     @Autowired
     MockMvc mockMvc;
+
+    @MockitoBean
+    LocationCatalog locationCatalog;
 
     @Autowired
     WorkerRepository workerRepository;
@@ -106,6 +112,28 @@ class WorkerAuthorizationTest {
                 .andExpect(status().isForbidden());
 
         assertFalse(workerRepository.findById(workerDelDueno).orElseThrow().getZoneIds().contains(ZONA));
+    }
+
+    @Test
+    @WithMockUser(username = DUENO_NAME, roles = "TRABAJADOR")
+    @DisplayName("El trabajador dueño agrega y consulta una localidad de su cobertura")
+    void duenoAgregaLocalidad() throws Exception {
+        mockMvc.perform(put("/api/v1/workers/" + workerDelDueno + "/localities/" + LOCALIDAD).with(csrf()))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/v1/workers/" + workerDelDueno + "/localities"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.localityIds[0]").value((int) LOCALIDAD));
+    }
+
+    @Test
+    @WithMockUser(username = OTRO_NAME, roles = "TRABAJADOR")
+    @DisplayName("Otro trabajador no puede cambiar las localidades de un perfil ajeno: 403")
+    void otroTrabajadorNoModificaLocalidadesAjenas() throws Exception {
+        mockMvc.perform(put("/api/v1/workers/" + workerDelDueno + "/localities/" + LOCALIDAD).with(csrf()))
+                .andExpect(status().isForbidden());
+
+        assertFalse(workerRepository.findById(workerDelDueno).orElseThrow().getLocalityIds().contains(LOCALIDAD));
     }
 
     @Test

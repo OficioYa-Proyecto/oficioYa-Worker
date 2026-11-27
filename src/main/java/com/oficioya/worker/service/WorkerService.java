@@ -5,9 +5,11 @@ import com.oficioya.worker.exception.*;
 import com.oficioya.worker.mapper.*;
 import com.oficioya.worker.model.*;
 import com.oficioya.worker.repository.*;
+import com.oficioya.worker.integration.LocationCatalog;
 import org.slf4j.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
 
 import java.util.*;
 import java.math.BigDecimal;
@@ -28,6 +30,7 @@ public class WorkerService {
     private final WorkerTradeMapper workerTradeMapper;
     private final AvailabilitySlotMapper slotMapper;
     private final WorkPhotoMapper photoMapper;
+    private final LocationCatalog locationCatalog;
 
     public WorkerService(WorkerRepository workerRepository,
                          WorkerTradeRepository workerTradeRepository,
@@ -37,7 +40,8 @@ public class WorkerService {
                          WorkerMapper workerMapper,
                          WorkerTradeMapper workerTradeMapper,
                          AvailabilitySlotMapper slotMapper,
-                         WorkPhotoMapper photoMapper) {
+                         WorkPhotoMapper photoMapper,
+                         LocationCatalog locationCatalog) {
         this.workerRepository = workerRepository;
         this.workerTradeRepository = workerTradeRepository;
         this.slotRepository = slotRepository;
@@ -47,17 +51,26 @@ public class WorkerService {
         this.workerTradeMapper = workerTradeMapper;
         this.slotMapper = slotMapper;
         this.photoMapper = photoMapper;
+        this.locationCatalog = locationCatalog;
     }
 
+    private static final Long NONE = -1L;   // marcador "sin valor" para la consulta
+
     @Transactional(readOnly = true)
-    public List<WorkerModel> search(UUID tradeId, Long zoneId, BigDecimal maxRate, Boolean availableNow) {
-        log.info("Worker search: tradeId={}, zoneId={}, maxRate={}, availableNow={}",
-                tradeId, zoneId, maxRate, availableNow);
+    public List<WorkerModel> search(UUID tradeId, Long zoneId, Long localityId,
+                                    BigDecimal maxRate, Boolean availableNow) {
+        log.info("Worker search: tradeId={}, zoneId={}, localityId={}, maxRate={}, availableNow={}",
+                tradeId, zoneId, localityId, maxRate, availableNow);
         if (maxRate != null && maxRate.signum() < 0) {
             throw new IllegalArgumentException("The maximum rate cannot be negative");
         }
-        List<Worker> workers = workerRepository.search(WorkerStatus.ACTIVE, tradeId, zoneId, maxRate, availableNow,
-                zoneId != null, tradeId != null || maxRate != null);
+        Long zoneLocalityId = zoneId == null ? NONE : locationCatalog.localityOfZone(zoneId).orElse(NONE);
+        Set<Long> localityZones = localityId == null ? Set.of() : locationCatalog.zonesOfLocality(localityId);
+        List<Worker> workers = workerRepository.search(WorkerStatus.ACTIVE, tradeId, zoneId, zoneLocalityId,
+                localityId == null ? NONE : localityId,
+                localityZones.isEmpty() ? Set.of(NONE) : localityZones,
+                maxRate, availableNow,
+                zoneId != null, localityId != null, tradeId != null || maxRate != null);
         if (workers.isEmpty()) {
             return List.of();
         }
@@ -116,6 +129,8 @@ public class WorkerService {
             throw new BusinessRuleException("Trade is not active: " + trade.getId());
         }
 
+        locationCatalog.requireZones(model.getZoneIds());
+        model.getLocalityIds().forEach(locationCatalog::requireLocality);
         Worker worker = workerMapper.toEntity(model);
         worker.setId(null);
         worker.setStatus(WorkerStatus.ACTIVE);          // siempre nace activo
@@ -165,6 +180,7 @@ public class WorkerService {
     private WorkerModel buildModel(Worker worker, List<WorkerTrade> trades,
                                    List<AvailabilitySlot> slots, List<WorkPhoto> photos) {
         WorkerModel model = workerMapper.toModel(worker);
+        model.setZoneIds(coveredZones(model));
 
         for (WorkerTrade workerTrade : trades) {
             WorkerTradeModel tradeModel = workerTradeMapper.toModel(workerTrade);
@@ -177,6 +193,16 @@ public class WorkerService {
         model.setSlots(slotMapper.toModelList(slots));
         model.setPhotos(photoMapper.toModelList(photos));
         return model;
+    }
+
+    // zoneIds de la respuesta = barrios guardados + barrios de sus localidades.
+    // Así los demás dominios ven la cobertura completa sin cambiar nada de su lado.
+    private Set<Long> coveredZones(WorkerModel model) {
+        Set<Long> covered = new HashSet<>(model.getZoneIds());
+        for (Long localityId : model.getLocalityIds()) {
+            covered.addAll(locationCatalog.zonesOfLocality(localityId));
+        }
+        return covered;
     }
 
     private Worker getWorkerOrThrow(UUID id) {
@@ -200,6 +226,7 @@ public class WorkerService {
     @Transactional
     public void addZone(UUID workerId, Long zoneId) {
         Worker worker = getActiveWorkerOrThrow(workerId);
+        locationCatalog.requireZones(Set.of(zoneId));
         worker.getZoneIds().add(zoneId);
         workerRepository.save(worker);
         log.info("Zone {} added to worker {}", zoneId, workerId);
@@ -214,6 +241,30 @@ public class WorkerService {
         }
         workerRepository.save(worker);
         log.info("Zone {} removed from worker {}", zoneId, workerId);
+    }
+
+    public Set<Long> findLocalities(UUID workerId) {
+        return new HashSet<>(getWorkerOrThrow(workerId).getLocalityIds());
+    }
+
+    @Transactional
+    public void addLocality(UUID workerId, Long localityId) {
+        Worker worker = getActiveWorkerOrThrow(workerId);
+        locationCatalog.requireLocality(localityId);
+        worker.getLocalityIds().add(localityId);
+        workerRepository.save(worker);
+        log.info("Locality {} added to worker {}", localityId, workerId);
+    }
+
+    @Transactional
+    public void removeLocality(UUID workerId, Long localityId) {
+        Worker worker = getActiveWorkerOrThrow(workerId);
+        if (!worker.getLocalityIds().remove(localityId)) {
+            log.warn("Worker {} does not cover locality {}", workerId, localityId);
+            throw new ResourceNotFoundException("The worker does not cover locality: " + localityId);
+        }
+        workerRepository.save(worker);
+        log.info("Locality {} removed from worker {}", localityId, workerId);
     }
 
     private Worker getActiveWorkerOrThrow(UUID id) {

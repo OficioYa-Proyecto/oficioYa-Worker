@@ -15,7 +15,7 @@ import java.util.stream.Collectors;
 
 // Habla con Users a través del Orquestador. Rutas provisionales: /zones y /users.
 @Component
-public class OrchestratorRestClient implements ZoneCatalogClient, UserDirectoryClient {
+public class OrchestratorRestClient implements LocationCatalogClient, UserDirectoryClient {
 
     private static final int BATCH_SIZE = 50;
 
@@ -26,20 +26,15 @@ public class OrchestratorRestClient implements ZoneCatalogClient, UserDirectoryC
     }
 
     @Override
-    public boolean existAll(Set<Long> zoneIds) {
-        if (zoneIds.isEmpty()) {
-            return true;
-        }
-        String ids = zoneIds.stream().map(String::valueOf).collect(Collectors.joining(","));
-        ZoneResponse[] found = call("zones", () -> restClient.get()
-                .uri(uri -> uri.path("/zones").queryParam("ids", ids).build())
-                .retrieve()
-                .body(ZoneResponse[].class));
-        if (found == null) {
-            return false;
-        }
-        Set<Long> foundIds = Arrays.stream(found).map(ZoneResponse::id).collect(Collectors.toSet());
-        return foundIds.containsAll(zoneIds);
+    public List<Zone> findZones() {
+        Zone[] found = call("zones", () -> restClient.get().uri("/zones").retrieve().body(Zone[].class));
+        return found == null ? List.of() : List.of(found);
+    }
+
+    @Override
+    public List<Locality> findLocalities() {
+        Locality[] found = call("localities", () -> restClient.get().uri("/localities").retrieve().body(Locality[].class));
+        return found == null ? List.of() : List.of(found);
     }
 
     @Override
@@ -84,10 +79,6 @@ public class OrchestratorRestClient implements ZoneCatalogClient, UserDirectoryC
         } catch (RestClientException ex) {
             throw new ExternalServiceUnavailableException("Users service unavailable (" + resource + ")", ex);
         }
-    }
-
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    record ZoneResponse(Long id) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

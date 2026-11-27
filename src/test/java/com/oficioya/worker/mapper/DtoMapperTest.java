@@ -34,7 +34,7 @@ class DtoMapperTest {
     @DisplayName("WorkerCreateRequest: el oficio principal llega con tradeId y sin estado")
     void shouldMapWorkerCreateRequest() {
         UUID tradeId = UUID.randomUUID();
-        WorkerCreateRequest request = new WorkerCreateRequest(true, null,
+        WorkerCreateRequest request = new WorkerCreateRequest(true, null, Set.of(3L),
                 new WorkerTradeRequest(tradeId, new BigDecimal("50000"), RateUnit.PER_JOB));
 
         WorkerModel model = workerDtoMapper.toModel(request);
@@ -42,6 +42,7 @@ class DtoMapperTest {
         assertNull(model.getUserId());
         assertNull(model.getStatus());
         assertEquals(Set.of(), model.getZoneIds());
+        assertEquals(Set.of(3L), model.getLocalityIds());        
         assertEquals(tradeId, model.getPrimaryTrade().getTrade().getId());
         assertEquals(new BigDecimal("50000"), model.getPrimaryTrade().getApproxRate());
     }
